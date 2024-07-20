@@ -49,7 +49,7 @@ async function onOpenUniversalQRClick(query: CallbackQuery, _: string): Promise<
 
     await editQR(query.message!, link);
 
-    const keyboard = await buildUniversalKeyboard(link, wallets);
+    const keyboard = await buildUniversalKeyboard(link);
 
     await bot.editMessageReplyMarkup(
         {
