@@ -13,7 +13,7 @@ import {
     showUserProfile
 } from './commands-handlers';
 import { walletMenuCallbacks } from './connect-wallet-menu';
-import { BASE_URL } from './consts';
+import { BASE_URL, GAME_START_KEY, ROOM_START_KEY } from './consts';
 import { Logger } from './logger';
 import { db, initRedisClient } from './ton-connect/storage';
 import { isStringJSONLike, toKnownForm } from './utils';
@@ -70,6 +70,10 @@ async function main(): Promise<void> {
                 return;
             }
             await db.set(`user:${chat.id.toString()}`, JSON.stringify({ ...from, score: 1 }));
+            await bot.sendMessage(
+                chat.id,
+                `Thanks for signing up!\nThe game room starts at 7:00 PM UTC and beings at 7:10 PM UTC\nWe'll send you notifications reminding about the game\nThank you`
+            );
         } else if (text === '/connect') {
             await handleConnectCommand(msg);
         } else if (text === '/disconnect') {
@@ -154,7 +158,7 @@ async function main(): Promise<void> {
 
                 if (!gameStarted) {
                     await db.set(`joining:${message.chat.id.toString()}`, 0);
-                    await bot.sendMessage(message.chat.id, 'Game stars at 7:10 PM UTC!');
+                    await bot.sendMessage(message.chat.id, `Game stars at ${'7:10'} UTC!`);
                 } else {
                     await bot.sendMessage(message.chat.id, 'Sorry, the game has already started!');
                 }
@@ -304,8 +308,14 @@ async function main(): Promise<void> {
         await Promise.all(sendMessagePromises);
     });
 
-    const minutes = new Date().getMinutes();
     // logger.info(`Running game at: ${minutes + 2}`);
+    // let gameStartHour = Number(gameStart.split(':')[0] || '19');
+    // let gameStartMin = Number(gameStart.split(':')[1] || '10');
+    // const serverTimeZone1 = moment.tz.guess();
+    // const utcOffset1 = moment.tz('UTC').utcOffset();
+    // const serverOffset1 = moment.tz(serverTimeZone1).utcOffset();
+    // const timeDifference1 = (serverOffset1 - utcOffset1) / 60; // in hours
+    // const serverRunHour1 = (gameStartHour + timeDifference1 + 24) % 24; // 7 PM UTC
 
     // at 7:10 PM UTC
     cron.schedule(`10 ${serverRunHour} * * *`, async () => {
