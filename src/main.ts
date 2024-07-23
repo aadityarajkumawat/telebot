@@ -20,7 +20,7 @@ import { walletMenuCallbacks } from './connect-wallet-menu';
 import { Logger } from './logger';
 import { db, initRedisClient } from './ton-connect/storage';
 import { isStringJSONLike, toKnownForm } from './utils';
-import { roomStartHour } from './consts';
+import { gameStartHour, gameStartMinute, roomStartHour, roomStartMinute, TIMEZONE } from './consts';
 
 const logger = Logger();
 
@@ -255,165 +255,160 @@ async function main(): Promise<void> {
     });
 
     const serverTimeZone = moment.tz.guess();
-    const utcOffset = moment.tz('UTC').utcOffset();
-    const serverOffset = moment.tz(serverTimeZone).utcOffset();
-    const timeDifference = (serverOffset - utcOffset) / 60; // in hours
-    let serverRunHour = (19 + timeDifference + 24) % 24; // 7 PM UTC
 
-    serverRunHour = roomStartHour;
-
-    logger.info(`Server time zone: ${serverTimeZone}`, `Server run hour: ${serverRunHour}`);
+    logger.info(`Server time zone: ${serverTimeZone}`);
 
     // at 7 PM UTC
-    cron.schedule(`46 ${serverRunHour} * * *`, async () => {
-        currentIndex.set(0);
-        const body = await getTodaysQuiz(moment().utc().format('MM/DD/YYYY'));
-        if (!body.questions) {
-            console.log('no questions today');
-            return;
-        }
+    cron.schedule(
+        `${roomStartMinute} ${roomStartHour} * * *`,
+        async () => {
+            currentIndex.set(0);
+            const body = await getTodaysQuiz(moment().utc().format('MM/DD/YYYY'));
+            if (!body.questions) {
+                console.log('no questions today');
+                return;
+            }
 
-        QUESTIONS = toKnownForm(body.questions);
+            QUESTIONS = toKnownForm(body.questions);
 
-        const signedUpUsers = await db.keys('user:*');
-        const joinedUsers = await db.keys('joining:*');
+            const signedUpUsers = await db.keys('user:*');
+            const joinedUsers = await db.keys('joining:*');
 
-        const joinedUserIds = joinedUsers.map(user => user.split(':')[1]).map(Number);
-        const userIds = signedUpUsers.map(user => user.split(':')[1]).map(Number);
+            const joinedUserIds = joinedUsers.map(user => user.split(':')[1]).map(Number);
+            const userIds = signedUpUsers.map(user => user.split(':')[1]).map(Number);
 
-        const notJoinedUserIds = userIds.filter(userId => !joinedUserIds.includes(userId));
+            const notJoinedUserIds = userIds.filter(userId => !joinedUserIds.includes(userId));
 
-        logger.info('Not joined user ids', notJoinedUserIds);
+            logger.info('Not joined user ids', notJoinedUserIds);
 
-        // @TODO: Switch with notJoinedUserIds
-        const sendMessagePromises = notJoinedUserIds.map(userId =>
-            bot.sendMessage(userId, "Hello, it's time for the game!\nAre you in?", {
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            {
-                                text: "Yes, I'm in!",
-                                callback_data: 'join_game'
-                            }
+            // @TODO: Switch with notJoinedUserIds
+            const sendMessagePromises = notJoinedUserIds.map(userId =>
+                bot.sendMessage(userId, "Hello, it's time for the game!\nAre you in?", {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                {
+                                    text: "Yes, I'm in!",
+                                    callback_data: 'join_game'
+                                }
+                            ]
                         ]
-                    ]
-                }
-            })
-        );
+                    }
+                })
+            );
 
-        await Promise.all(sendMessagePromises);
-    });
-
-    // logger.info(`Running game at: ${minutes + 2}`);
-    // let gameStartHour = Number(gameStart.split(':')[0] || '19');
-    // let gameStartMin = Number(gameStart.split(':')[1] || '10');
-    // const serverTimeZone1 = moment.tz.guess();
-    // const utcOffset1 = moment.tz('UTC').utcOffset();
-    // const serverOffset1 = moment.tz(serverTimeZone1).utcOffset();
-    // const timeDifference1 = (serverOffset1 - utcOffset1) / 60; // in hours
-    // const serverRunHour1 = (gameStartHour + timeDifference1 + 24) % 24; // 7 PM UTC
+            await Promise.all(sendMessagePromises);
+        },
+        { timezone: TIMEZONE }
+    );
 
     // at 7:10 PM UTC
-    cron.schedule(`47 ${serverRunHour} * * *`, async () => {
-        gameStarted = true;
-        logger.info('Game has started!');
+    cron.schedule(
+        `${gameStartMinute} ${gameStartHour} * * *`,
+        async () => {
+            gameStarted = true;
+            logger.info('Game has started!');
 
-        const joinedUsers = await db.keys('joining:*');
-        const joinedUserIds = joinedUsers.map(user => user.split(':')[1]).map(Number);
+            const joinedUsers = await db.keys('joining:*');
+            const joinedUserIds = joinedUsers.map(user => user.split(':')[1]).map(Number);
 
-        if (QUESTIONS.length === 0) {
-            console.log('NO QUESTIONS');
-            // send no game today message
-            return;
-        }
-
-        for (const _ of QUESTIONS) {
-            await sendQuestionToAllUsers(joinedUserIds, QUESTIONS, currentIndex.get());
-
-            // wait for 3 seconds
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            currentIndex.inc();
-        }
-
-        await sendGameOverToAllUsers(joinedUserIds);
-
-        // update leader board
-        for (const userId of joinedUserIds) {
-            const userDoc = await db.get(`user:${userId}`);
-            if (!userDoc) {
-                await bot.sendMessage(
-                    userId,
-                    'Oops! We are unable to process your score! [no user data]'
-                );
+            if (QUESTIONS.length === 0) {
+                console.log('NO QUESTIONS');
+                // send no game today message
                 return;
             }
 
-            if (!isStringJSONLike(userDoc)) {
-                await bot.sendMessage(
-                    userId,
-                    'Oops! We are unable to process your score! [user doc not like json]'
-                );
-                return;
+            for (const _ of QUESTIONS) {
+                await sendQuestionToAllUsers(joinedUserIds, QUESTIONS, currentIndex.get());
+
+                // wait for 3 seconds
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                currentIndex.inc();
             }
 
-            const user = JSON.parse(userDoc);
+            await sendGameOverToAllUsers(joinedUserIds);
 
-            if (!user.score) {
-                user.score = 0;
-            }
-
-            // check if they answered the questions correctly
-            const responseDoc = await db.get(`response:${userId}`);
-            const date = moment().utc().format('YYYY-MM-DD');
-
-            const questions = JSON.parse(responseDoc || '{}');
-
-            if (!questions[date]) {
-                await bot.sendMessage(userId, 'You did not answer any questions today!');
-                return;
-            }
-
-            let score = 0;
-
-            for (const question of questions[date]) {
-                let ques = question as {
-                    question: string;
-                    options: Array<{ text: string; callback_data: string }>;
-                };
-                const userSelected = ques.options
-                    .filter(option => option.text.includes('✅'))
-                    .map(option => option.text.replace('✅', '').trim());
-
-                const correctAnswers = QUESTIONS.find(quest => quest.question === ques.question);
-                console.log('Correct Answers:', correctAnswers, 'User Selected:', userSelected);
-
-                if (!correctAnswers) {
+            // update leader board
+            for (const userId of joinedUserIds) {
+                const userDoc = await db.get(`user:${userId}`);
+                if (!userDoc) {
                     await bot.sendMessage(
                         userId,
-                        'Oops! We are unable to process your score! [no correct answers found]'
+                        'Oops! We are unable to process your score! [no user data]'
                     );
                     return;
                 }
 
-                const correct = correctAnswers.correctAnswers;
-
-                let diff = correct.filter(function (x) {
-                    return userSelected.indexOf(x) < 0;
-                });
-
-                if (diff.length === 0) {
-                    user.score += 1;
+                if (!isStringJSONLike(userDoc)) {
+                    await bot.sendMessage(
+                        userId,
+                        'Oops! We are unable to process your score! [user doc not like json]'
+                    );
+                    return;
                 }
 
-                await db.set(`user:${userId}`, JSON.stringify(user));
-            }
-            await bot.sendMessage(userId, `Your score is updated: ${user.score}`);
-        }
+                const user = JSON.parse(userDoc);
 
-        // ----- CLEANUP FOR NEXT DAY -----
-        const deletePromises = joinedUsers.map(user => db.del(user));
-        await Promise.all(deletePromises);
-    });
+                if (!user.score) {
+                    user.score = 0;
+                }
+
+                // check if they answered the questions correctly
+                const responseDoc = await db.get(`response:${userId}`);
+                const date = moment().utc().format('YYYY-MM-DD');
+
+                const questions = JSON.parse(responseDoc || '{}');
+
+                if (!questions[date]) {
+                    await bot.sendMessage(userId, 'You did not answer any questions today!');
+                    return;
+                }
+
+                let score = 0;
+
+                for (const question of questions[date]) {
+                    let ques = question as {
+                        question: string;
+                        options: Array<{ text: string; callback_data: string }>;
+                    };
+                    const userSelected = ques.options
+                        .filter(option => option.text.includes('✅'))
+                        .map(option => option.text.replace('✅', '').trim());
+
+                    const correctAnswers = QUESTIONS.find(
+                        quest => quest.question === ques.question
+                    );
+                    console.log('Correct Answers:', correctAnswers, 'User Selected:', userSelected);
+
+                    if (!correctAnswers) {
+                        await bot.sendMessage(
+                            userId,
+                            'Oops! We are unable to process your score! [no correct answers found]'
+                        );
+                        return;
+                    }
+
+                    const correct = correctAnswers.correctAnswers;
+
+                    let diff = correct.filter(function (x) {
+                        return userSelected.indexOf(x) < 0;
+                    });
+
+                    if (diff.length === 0) {
+                        user.score += 1;
+                    }
+
+                    await db.set(`user:${userId}`, JSON.stringify(user));
+                }
+                await bot.sendMessage(userId, `Your score is updated: ${user.score}`);
+            }
+
+            // ----- CLEANUP FOR NEXT DAY -----
+            const deletePromises = joinedUsers.map(user => db.del(user));
+            await Promise.all(deletePromises);
+        },
+        { timezone: TIMEZONE }
+    );
 }
 
 main();
