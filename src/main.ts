@@ -6,7 +6,7 @@ import { config } from 'dotenv';
 import express from 'express';
 import moment from 'moment-timezone';
 import cron from 'node-cron';
-import api from './api';
+import api, { getTodaysQuiz } from './api';
 import { bot, sendGameOverToAllUsers, sendQuestionToAllUsers } from './bot';
 import {
     handleConnectCommand,
@@ -17,10 +17,10 @@ import {
     showUserProfile
 } from './commands-handlers';
 import { walletMenuCallbacks } from './connect-wallet-menu';
-import { BASE_URL } from './consts';
 import { Logger } from './logger';
 import { db, initRedisClient } from './ton-connect/storage';
 import { isStringJSONLike, toKnownForm } from './utils';
+import { roomStartHour } from './consts';
 
 const logger = Logger();
 
@@ -260,25 +260,14 @@ async function main(): Promise<void> {
     const timeDifference = (serverOffset - utcOffset) / 60; // in hours
     let serverRunHour = (19 + timeDifference + 24) % 24; // 7 PM UTC
 
-    serverRunHour = 0;
+    serverRunHour = roomStartHour;
 
     logger.info(`Server time zone: ${serverTimeZone}`, `Server run hour: ${serverRunHour}`);
 
     // at 7 PM UTC
-    cron.schedule(`35 ${serverRunHour} * * *`, async () => {
+    cron.schedule(`46 ${serverRunHour} * * *`, async () => {
         currentIndex.set(0);
-        const res = await fetch(`${BASE_URL}/api/todays-quiz`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                date: moment().utc().format('MM/DD/YYYY')
-            })
-        });
-
-        const body = await res.json();
-
+        const body = await getTodaysQuiz(moment().utc().format('MM/DD/YYYY'));
         if (!body.questions) {
             console.log('no questions today');
             return;
@@ -325,7 +314,7 @@ async function main(): Promise<void> {
     // const serverRunHour1 = (gameStartHour + timeDifference1 + 24) % 24; // 7 PM UTC
 
     // at 7:10 PM UTC
-    cron.schedule(`40 ${serverRunHour} * * *`, async () => {
+    cron.schedule(`47 ${serverRunHour} * * *`, async () => {
         gameStarted = true;
         logger.info('Game has started!');
 

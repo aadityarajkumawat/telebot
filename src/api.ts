@@ -6,16 +6,19 @@ import { db } from './ton-connect/storage';
 
 const router = Router();
 
-router.post('/todays-quiz', async (req, res) => {
-    console.log(req.body.date);
-
-    const date = new Date(req.body.date);
+export async function getTodaysQuiz(dateString: string) {
+    const date = new Date(dateString);
     const questions = await prisma.question.findMany({
         where: {
             scheduledAt: date
         }
     });
 
+    return { questions };
+}
+
+router.post('/todays-quiz', async (req, res) => {
+    const questions = await getTodaysQuiz(req.body.date);
     return res.json({ questions });
 });
 

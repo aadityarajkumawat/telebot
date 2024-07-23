@@ -7,7 +7,7 @@
     "start:redis": "docker run -d -p 127.0.0.1:6379:6379 redis/redis-stack-server:latest",
     "dev": "nodemon ./dist/main.js",
     "watch": "tsc -w",
-    "build": "tsc",
+    "build": "npx prisma generate && npx prisma migrate dev --name prod && tsc",
     "start": "node dist/main.js",
     "stop:daemon": "pm2 stop tgbot && pm2 delete tgbot"
   },
