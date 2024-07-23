@@ -248,6 +248,7 @@ async function main(): Promise<void> {
                 }
 
                 await db.set(`response:${message.chat.id.toString()}`, JSON.stringify(response));
+                await bot.answerCallbackQuery(msg.id);
             }
         } catch (error) {
             logger.error(error);
@@ -263,6 +264,9 @@ async function main(): Promise<void> {
         `${roomStartMinute} ${roomStartHour} * * *`,
         async () => {
             currentIndex.set(0);
+            let joinedUsers = await db.keys('joining:*');
+            const deletePromises = joinedUsers.map(user => db.del(user));
+            await Promise.all(deletePromises);
             const body = await getTodaysQuiz(moment().utc().format('MM/DD/YYYY'));
             if (!body.questions) {
                 console.log('no questions today');
@@ -272,10 +276,12 @@ async function main(): Promise<void> {
             QUESTIONS = toKnownForm(body.questions);
 
             const signedUpUsers = await db.keys('user:*');
-            const joinedUsers = await db.keys('joining:*');
+            joinedUsers = await db.keys('joining:*');
 
             const joinedUserIds = joinedUsers.map(user => user.split(':')[1]).map(Number);
             const userIds = signedUpUsers.map(user => user.split(':')[1]).map(Number);
+
+            console.log('Joined user ids:', joinedUserIds);
 
             const notJoinedUserIds = userIds.filter(userId => !joinedUserIds.includes(userId));
 
@@ -306,106 +312,119 @@ async function main(): Promise<void> {
     cron.schedule(
         `${gameStartMinute} ${gameStartHour} * * *`,
         async () => {
-            gameStarted = true;
-            logger.info('Game has started!');
+            try {
+                gameStarted = true;
+                logger.info('Game has started!');
 
-            const joinedUsers = await db.keys('joining:*');
-            const joinedUserIds = joinedUsers.map(user => user.split(':')[1]).map(Number);
+                const joinedUsers = await db.keys('joining:*');
+                const joinedUserIds = joinedUsers.map(user => user.split(':')[1]).map(Number);
 
-            if (QUESTIONS.length === 0) {
-                console.log('NO QUESTIONS');
-                // send no game today message
-                return;
-            }
-
-            for (const _ of QUESTIONS) {
-                await sendQuestionToAllUsers(joinedUserIds, QUESTIONS, currentIndex.get());
-
-                // wait for 3 seconds
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                currentIndex.inc();
-            }
-
-            await sendGameOverToAllUsers(joinedUserIds);
-
-            // update leader board
-            for (const userId of joinedUserIds) {
-                const userDoc = await db.get(`user:${userId}`);
-                if (!userDoc) {
-                    await bot.sendMessage(
-                        userId,
-                        'Oops! We are unable to process your score! [no user data]'
-                    );
+                if (QUESTIONS.length === 0) {
+                    console.log('NO QUESTIONS');
+                    // send no game today message
                     return;
                 }
 
-                if (!isStringJSONLike(userDoc)) {
-                    await bot.sendMessage(
-                        userId,
-                        'Oops! We are unable to process your score! [user doc not like json]'
-                    );
-                    return;
+                console.log('Questions:', QUESTIONS);
+
+                for (const _ of QUESTIONS) {
+                    await sendQuestionToAllUsers(joinedUserIds, QUESTIONS, currentIndex.get());
+
+                    // wait for 3 seconds
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    currentIndex.inc();
                 }
 
-                const user = JSON.parse(userDoc);
+                await sendGameOverToAllUsers(joinedUserIds);
 
-                if (!user.score) {
-                    user.score = 0;
-                }
-
-                // check if they answered the questions correctly
-                const responseDoc = await db.get(`response:${userId}`);
-                const date = moment().utc().format('YYYY-MM-DD');
-
-                const questions = JSON.parse(responseDoc || '{}');
-
-                if (!questions[date]) {
-                    await bot.sendMessage(userId, 'You did not answer any questions today!');
-                    return;
-                }
-
-                let score = 0;
-
-                for (const question of questions[date]) {
-                    let ques = question as {
-                        question: string;
-                        options: Array<{ text: string; callback_data: string }>;
-                    };
-                    const userSelected = ques.options
-                        .filter(option => option.text.includes('✅'))
-                        .map(option => option.text.replace('✅', '').trim());
-
-                    const correctAnswers = QUESTIONS.find(
-                        quest => quest.question === ques.question
-                    );
-                    console.log('Correct Answers:', correctAnswers, 'User Selected:', userSelected);
-
-                    if (!correctAnswers) {
+                // update leader board
+                for (const userId of joinedUserIds) {
+                    const userDoc = await db.get(`user:${userId}`);
+                    if (!userDoc) {
                         await bot.sendMessage(
                             userId,
-                            'Oops! We are unable to process your score! [no correct answers found]'
+                            'Oops! We are unable to process your score! [no user data]'
                         );
                         return;
                     }
 
-                    const correct = correctAnswers.correctAnswers;
-
-                    let diff = correct.filter(function (x) {
-                        return userSelected.indexOf(x) < 0;
-                    });
-
-                    if (diff.length === 0) {
-                        user.score += 1;
+                    if (!isStringJSONLike(userDoc)) {
+                        await bot.sendMessage(
+                            userId,
+                            'Oops! We are unable to process your score! [user doc not like json]'
+                        );
+                        return;
                     }
 
-                    await db.set(`user:${userId}`, JSON.stringify(user));
-                }
-                await bot.sendMessage(userId, `Your score is updated: ${user.score}`);
-            }
+                    const user = JSON.parse(userDoc);
 
-            // ----- CLEANUP FOR NEXT DAY -----
-            const deletePromises = joinedUsers.map(user => db.del(user));
-            await Promise.all(deletePromises);
+                    if (!user.score) {
+                        user.score = 0;
+                    }
+
+                    // check if they answered the questions correctly
+                    const responseDoc = await db.get(`response:${userId}`);
+                    const date = moment().utc().format('YYYY-MM-DD');
+
+                    const questions = JSON.parse(responseDoc || '{}');
+
+                    if (!questions[date]) {
+                        await bot.sendMessage(userId, 'You did not answer any questions today!');
+                        return;
+                    }
+
+                    console.log('Questions:', questions[date]);
+
+                    let score = 0;
+
+                    for (const question of questions[date]) {
+                        let ques = question as {
+                            question: string;
+                            options: Array<{ text: string; callback_data: string }>;
+                        };
+                        const userSelected = ques.options
+                            .filter(option => option.text.includes('✅'))
+                            .map(option => option.text.replace('✅', '').trim());
+
+                        const correctAnswers = QUESTIONS.find(
+                            quest => quest.question === ques.question
+                        );
+                        console.log(
+                            'Correct Answers:',
+                            correctAnswers,
+                            'User Selected:',
+                            userSelected
+                        );
+
+                        if (!correctAnswers) {
+                            await bot.sendMessage(
+                                userId,
+                                'Oops! We are unable to process your score! [no correct answers found]'
+                            );
+                            return;
+                        }
+
+                        const correct = correctAnswers.correctAnswers;
+
+                        let diff = correct.filter(function (x) {
+                            return userSelected.indexOf(x) < 0;
+                        });
+
+                        if (diff.length === 0 && correct.length > 0) {
+                            user.score += 1;
+                        }
+
+                        await db.set(`user:${userId}`, JSON.stringify(user));
+                    }
+                    await bot.sendMessage(userId, `Your score is updated: ${user.score}`);
+                }
+
+                // ----- CLEANUP FOR NEXT DAY -----
+                const deletePromises = joinedUsers.map(user => db.del(user));
+                await Promise.all(deletePromises);
+            } catch (error) {
+                logger.error(error);
+            }
         },
         { timezone: TIMEZONE }
     );

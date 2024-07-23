@@ -7,6 +7,8 @@ import { db } from './ton-connect/storage';
 const router = Router();
 
 export async function getTodaysQuiz(dateString: string) {
+    console.log('dateString', dateString);
+
     const date = new Date(dateString);
     const questions = await prisma.question.findMany({
         where: {
@@ -19,7 +21,7 @@ export async function getTodaysQuiz(dateString: string) {
 
 router.post('/todays-quiz', async (req, res) => {
     const questions = await getTodaysQuiz(req.body.date);
-    return res.json({ questions });
+    return res.json(questions);
 });
 
 router.get('/past-quizzes', async (_, res) => {
