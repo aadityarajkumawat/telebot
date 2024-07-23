@@ -9,7 +9,7 @@ export const TIMEZONE = 'America/New_York'; //'Africa/Abidjan'; // UTC
 
 /** Game Timings [24 hour UTC] (Editable) */
 export const roomStartHour = 15;
-export const roomStartMinute = 25;
+export const roomStartMinute = 30;
 export const gameStartHour = 15;
-export const gameStartMinute = 26;
+export const gameStartMinute = 31;
 /** ************************************* */
