@@ -1,8 +1,12 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+import cors from 'cors';
+import { config } from 'dotenv';
+import express from 'express';
 import moment from 'moment-timezone';
 import cron from 'node-cron';
+import api from './api';
 import { bot, sendGameOverToAllUsers, sendQuestionToAllUsers } from './bot';
 import {
     handleConnectCommand,
@@ -13,7 +17,7 @@ import {
     showUserProfile
 } from './commands-handlers';
 import { walletMenuCallbacks } from './connect-wallet-menu';
-import { BASE_URL, GAME_START_KEY, ROOM_START_KEY } from './consts';
+import { BASE_URL } from './consts';
 import { Logger } from './logger';
 import { db, initRedisClient } from './ton-connect/storage';
 import { isStringJSONLike, toKnownForm } from './utils';
@@ -262,6 +266,7 @@ async function main(): Promise<void> {
 
     // at 7 PM UTC
     cron.schedule(`35 ${serverRunHour} * * *`, async () => {
+        currentIndex.set(0);
         const res = await fetch(`${BASE_URL}/api/todays-quiz`, {
             method: 'POST',
             headers: {
@@ -423,3 +428,21 @@ async function main(): Promise<void> {
 }
 
 main();
+
+config();
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+app.get('/', (_, res) => {
+    res.send('Hello World!');
+});
+
+app.use('/api', api);
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
