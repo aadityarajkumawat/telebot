@@ -254,12 +254,14 @@ async function main(): Promise<void> {
     const utcOffset = moment.tz('UTC').utcOffset();
     const serverOffset = moment.tz(serverTimeZone).utcOffset();
     const timeDifference = (serverOffset - utcOffset) / 60; // in hours
-    const serverRunHour = (19 + timeDifference + 24) % 24; // 7 PM UTC
+    let serverRunHour = (19 + timeDifference + 24) % 24; // 7 PM UTC
+
+    serverRunHour = 0;
 
     logger.info(`Server time zone: ${serverTimeZone}`, `Server run hour: ${serverRunHour}`);
 
     // at 7 PM UTC
-    cron.schedule(`0 ${serverRunHour} * * *`, async () => {
+    cron.schedule(`35 ${serverRunHour} * * *`, async () => {
         const res = await fetch(`${BASE_URL}/api/todays-quiz`, {
             method: 'POST',
             headers: {
@@ -318,7 +320,7 @@ async function main(): Promise<void> {
     // const serverRunHour1 = (gameStartHour + timeDifference1 + 24) % 24; // 7 PM UTC
 
     // at 7:10 PM UTC
-    cron.schedule(`10 ${serverRunHour} * * *`, async () => {
+    cron.schedule(`40 ${serverRunHour} * * *`, async () => {
         gameStarted = true;
         logger.info('Game has started!');
 
