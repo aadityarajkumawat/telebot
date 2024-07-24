@@ -21,6 +21,7 @@ import { Logger } from './logger';
 import { db, initRedisClient } from './ton-connect/storage';
 import { isStringJSONLike, toKnownForm } from './utils';
 import { gameStartHour, gameStartMinute, roomStartHour, roomStartMinute, TIMEZONE } from './consts';
+import { prisma } from './prisma';
 
 const logger = Logger();
 
@@ -219,35 +220,38 @@ async function main(): Promise<void> {
 
                 console.log(editresponse);
 
-                // patch the document in db
-                const responseDoc = await db.get(`response:${message.chat.id.toString()}`);
-                if (!responseDoc) {
-                    await db.set(`response:${message.chat.id.toString()}`, JSON.stringify({}));
+                if (!message.text) {
+                    await bot.answerCallbackQuery(msg.id, { text: 'No question text found!' });
+                    return;
                 }
 
-                const response = JSON.parse(responseDoc || '{}');
+                console.log('UPSERTING>>>');
 
-                // get todays date
-                const utcDate = moment().utc().format('YYYY-MM-DD');
+                const added = await prisma.response.upsert({
+                    create: {
+                        question: message.text || '',
+                        scheduledAt: new Date(moment().utc().format('YYYY-MM-DD')),
+                        userId: message.chat.id.toString(),
+                        answers: options
+                            .filter(option => option.text.includes('✅'))
+                            .map(option => option.text.replace('✅', '').trim())
+                    },
+                    update: {
+                        answers: options
+                            .filter(option => option.text.includes('✅'))
+                            .map(option => option.text.replace('✅', '').trim())
+                    },
+                    where: {
+                        question_scheduledAt_userId: {
+                            question: message.text || '',
+                            scheduledAt: new Date(moment().utc().format('YYYY-MM-DD')),
+                            userId: message.chat.id.toString()
+                        }
+                    }
+                });
 
-                if (!response[utcDate]) {
-                    response[utcDate] = [];
-                }
+                console.log({ added });
 
-                const ifQuestionExists = response[utcDate].findIndex(
-                    (entry: any) => entry.question === message.text
-                );
-
-                if (ifQuestionExists === -1) {
-                    response[utcDate].push({
-                        question: message.text,
-                        options
-                    });
-                } else {
-                    response[utcDate][ifQuestionExists].options = options;
-                }
-
-                await db.set(`response:${message.chat.id.toString()}`, JSON.stringify(response));
                 await bot.answerCallbackQuery(msg.id);
             }
         } catch (error) {
@@ -317,7 +321,7 @@ async function main(): Promise<void> {
                 logger.info('Game has started!');
 
                 const joinedUsers = await db.keys('joining:*');
-                const joinedUserIds = joinedUsers.map(user => user.split(':')[1]).map(Number);
+                let joinedUserIds = joinedUsers.map(user => user.split(':')[1]).map(Number);
 
                 if (QUESTIONS.length === 0) {
                     console.log('NO QUESTIONS');
@@ -325,14 +329,83 @@ async function main(): Promise<void> {
                     return;
                 }
 
-                console.log('Questions:', QUESTIONS);
+                const copyQuestions: Array<Question> = [
+                    ...QUESTIONS,
+                    { question: '', answers: [], correctAnswers: [] }
+                ];
 
-                for (const _ of QUESTIONS) {
-                    await sendQuestionToAllUsers(joinedUserIds, QUESTIONS, currentIndex.get());
+                for (let i = 0; i < copyQuestions.length; i++) {
+                    // check previous responses
+                    for (const userId of joinedUserIds) {
+                        const prevQuestion = QUESTIONS[currentIndex.get() - 1];
+                        if (!prevQuestion) {
+                            console.log('SERVER ERROR [INDEX NOT FOUND]:', currentIndex.get() - 1);
+                            continue;
+                        }
 
-                    // wait for 3 seconds
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                    currentIndex.inc();
+                        console.log({ prevQuestion });
+
+                        const date = moment().utc().format('YYYY-MM-DD');
+                        const questionText = prevQuestion.question;
+
+                        console.log({ date, questionText, userId });
+
+                        const doc = await prisma.response.findFirst({
+                            where: {
+                                userId: userId.toString(),
+                                scheduledAt: new Date(date),
+                                question: questionText
+                            }
+                        });
+
+                        console.log({ doc });
+
+                        if (!doc) {
+                            await bot.sendMessage(
+                                userId,
+                                `You did not answer the question: ${questionText}\nGame Over!`
+                            );
+                            joinedUserIds = joinedUserIds.filter(id => id !== userId);
+                            continue;
+                        }
+
+                        const correctAnswers = prevQuestion.correctAnswers;
+
+                        const arraysAreEqual = (a: Array<any>, b: Array<any>) =>
+                            a.length === b.length &&
+                            a.every((element, index) => element === b[index]);
+
+                        let allCorrect = arraysAreEqual(doc.answers, correctAnswers);
+
+                        console.log({ allCorrect, correctAnswers, answers: doc.answers });
+
+                        if (correctAnswers.length === 0) {
+                            await bot.sendMessage(
+                                userId,
+                                `Correct answers not found for ${questionText}`
+                            );
+                            joinedUserIds = joinedUserIds.filter(id => id !== userId);
+                            continue;
+                        }
+
+                        if (!allCorrect && correctAnswers.length > 0) {
+                            await bot.sendMessage(
+                                userId,
+                                `You did not answer the question correctly: ${questionText}\nGame Over!`
+                            );
+                            joinedUserIds = joinedUserIds.filter(id => id !== userId);
+                            continue;
+                        }
+                    }
+
+                    if (i !== copyQuestions.length - 1) {
+                        // check answers to previous questions
+                        await sendQuestionToAllUsers(joinedUserIds, QUESTIONS, currentIndex.get());
+
+                        // wait for 3 seconds
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                        currentIndex.inc();
+                    }
                 }
 
                 await sendGameOverToAllUsers(joinedUserIds);
@@ -362,60 +435,9 @@ async function main(): Promise<void> {
                         user.score = 0;
                     }
 
-                    // check if they answered the questions correctly
-                    const responseDoc = await db.get(`response:${userId}`);
-                    const date = moment().utc().format('YYYY-MM-DD');
+                    user.score += 1;
 
-                    const questions = JSON.parse(responseDoc || '{}');
-
-                    if (!questions[date]) {
-                        await bot.sendMessage(userId, 'You did not answer any questions today!');
-                        return;
-                    }
-
-                    console.log('Questions:', questions[date]);
-
-                    let score = 0;
-
-                    for (const question of questions[date]) {
-                        let ques = question as {
-                            question: string;
-                            options: Array<{ text: string; callback_data: string }>;
-                        };
-                        const userSelected = ques.options
-                            .filter(option => option.text.includes('✅'))
-                            .map(option => option.text.replace('✅', '').trim());
-
-                        const correctAnswers = QUESTIONS.find(
-                            quest => quest.question === ques.question
-                        );
-                        console.log(
-                            'Correct Answers:',
-                            correctAnswers,
-                            'User Selected:',
-                            userSelected
-                        );
-
-                        if (!correctAnswers) {
-                            await bot.sendMessage(
-                                userId,
-                                'Oops! We are unable to process your score! [no correct answers found]'
-                            );
-                            return;
-                        }
-
-                        const correct = correctAnswers.correctAnswers;
-
-                        let diff = correct.filter(function (x) {
-                            return userSelected.indexOf(x) < 0;
-                        });
-
-                        if (diff.length === 0 && correct.length > 0) {
-                            user.score += 1;
-                        }
-
-                        await db.set(`user:${userId}`, JSON.stringify(user));
-                    }
+                    await db.set(`user:${userId}`, JSON.stringify(user));
                     await bot.sendMessage(userId, `Your score is updated: ${user.score}`);
                 }
 
