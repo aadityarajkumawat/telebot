@@ -427,12 +427,12 @@ async function main(): Promise<void> {
     // at 7:10 PM UTC
     cron.schedule(`${gameStartMinute} ${gameStartHour} * * *`, startGame, { timezone: TIMEZONE });
 
-    while (true) {
-        await new Promise(resolve => setTimeout(resolve, 10000));
-        await startRoom();
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        await startGame();
-    }
+    // while (true) {
+    //     await new Promise(resolve => setTimeout(resolve, 10000));
+    //     await startRoom();
+    //     await new Promise(resolve => setTimeout(resolve, 5000));
+    //     await startGame();
+    // }
 }
 
 main();
