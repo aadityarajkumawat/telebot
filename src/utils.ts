@@ -1,4 +1,5 @@
 import { encodeTelegramUrlParameters, isTelegramUrl, WalletInfoRemote } from '@tonconnect/sdk';
+import { response } from 'express';
 import { InlineKeyboardButton } from 'node-telegram-bot-api';
 
 export const AT_WALLET_APP_NAME = 'telegram-wallet';
@@ -58,14 +59,12 @@ export function toKnownForm(
         option2: string;
         option3: string;
         option4: string;
-        answers: Array<string>;
     }>
 ) {
     return questions.map(question => {
         return {
             question: question.question,
-            answers: [question.option1, question.option2, question.option3, question.option4],
-            correctAnswers: question.answers
+            answers: [question.option1, question.option2, question.option3, question.option4]
         };
     });
 }

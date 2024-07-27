@@ -14,7 +14,6 @@ model Question {
   option2     String
   option3     String
   option4     String
-  answers     String[]
   scheduledAt DateTime
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -23,7 +22,7 @@ model Question {
 model Response {
   userId      String
   question    String
-  answers     String[]
+  response    String
   scheduledAt DateTime
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

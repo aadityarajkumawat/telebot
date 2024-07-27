@@ -7,8 +7,6 @@ import { db } from './ton-connect/storage';
 const router = Router();
 
 export async function getTodaysQuiz(dateString: string) {
-    console.log('dateString', dateString);
-
     const date = new Date(dateString);
     const questions = await prisma.question.findMany({
         where: {
@@ -63,7 +61,6 @@ router.post('/save-questions', async (req, res) => {
             option3: string;
             option4: string;
         };
-        answers: Array<string>;
     }>;
 
     await prisma.question.createMany({
@@ -73,7 +70,6 @@ router.post('/save-questions', async (req, res) => {
             option2: q.options.option2,
             option3: q.options.option3,
             option4: q.options.option4,
-            answers: q.answers,
             scheduledAt: date
         }))
     });
@@ -108,8 +104,6 @@ router.get('/game-time', async (_, res) => {
         const gameStart = await db.get(GAME_START_KEY);
         const roomStart = await db.get(ROOM_START_KEY);
 
-        console.log(gameStart, roomStart);
-
         if (!gameStart || !roomStart) {
             // await db.disconnect();
             return res.json({
@@ -123,7 +117,6 @@ router.get('/game-time', async (_, res) => {
             roomStart
         });
     } catch (error) {
-        console.log(error);
         return res.json({
             message: 'Game time not set',
             status: 'error'
