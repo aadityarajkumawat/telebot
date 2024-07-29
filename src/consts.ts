@@ -11,5 +11,7 @@ export const TIMEZONE = !IS_PROD ? 'America/New_York' : 'Africa/Abidjan'; // UTC
 export const roomStartHour = '*/1';
 export const roomStartMinute = '0';
 export const gameStartHour = '*/1';
-export const gameStartMinute = '10';
+export const gameStartMinute = '2';
 /** ************************************* */
+
+export const QUESTION_TIME_GAP = 30 * 1000; // 30 seconds

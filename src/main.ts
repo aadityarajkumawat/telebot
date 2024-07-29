@@ -7,7 +7,7 @@ import express from 'express';
 import moment from 'moment-timezone';
 import cron from 'node-cron';
 import api, { getTodaysQuiz } from './api';
-import { bot, sendGameOverToAllUsers, sendQuestionToAllUsers } from './bot';
+import { bot, sendGameOverToAllUsers, sendQuestionToAllUsers, sendReminderToAllUsers } from './bot';
 import {
     handleConnectCommand,
     handleDisconnectCommand,
@@ -20,7 +20,14 @@ import { walletMenuCallbacks } from './connect-wallet-menu';
 import { Logger } from './logger';
 import { db, initRedisClient } from './ton-connect/storage';
 import { isStringJSONLike, toKnownForm } from './utils';
-import { gameStartHour, gameStartMinute, roomStartHour, roomStartMinute, TIMEZONE } from './consts';
+import {
+    gameStartHour,
+    gameStartMinute,
+    QUESTION_TIME_GAP,
+    roomStartHour,
+    roomStartMinute,
+    TIMEZONE
+} from './consts';
 import { prisma } from './prisma';
 
 const logger = Logger();
@@ -384,12 +391,16 @@ async function main(): Promise<void> {
                     }
                 }
 
+                if (i === 0) {
+                    await sendReminderToAllUsers(joinedUserIds);
+                }
+
                 if (i !== copyQuestions.length - 1) {
                     // check answers to previous questions
                     await sendQuestionToAllUsers(joinedUserIds, QUESTIONS, currentIndex.get());
 
                     // wait for 3 seconds
-                    await new Promise(resolve => setTimeout(resolve, 10000));
+                    await new Promise(resolve => setTimeout(resolve, QUESTION_TIME_GAP));
                     currentIndex.inc();
                 }
             }

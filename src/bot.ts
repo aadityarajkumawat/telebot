@@ -23,6 +23,10 @@ export function prepareQuestionPromise(
     });
 }
 
+export function prepareReminderPromise(userId: number) {
+    return bot.sendMessage(userId, `The game is starting Now!`);
+}
+
 export function sendQuestionToAllUsers(
     userIds: number[],
     questions: Array<{ question: string; answers: string[] }>,
@@ -31,6 +35,10 @@ export function sendQuestionToAllUsers(
     return Promise.all(
         userIds.map(userId => prepareQuestionPromise(userId, questions, questionIndex))
     );
+}
+
+export function sendReminderToAllUsers(userIds: number[]): Promise<Array<TelegramBot.Message>> {
+    return Promise.all(userIds.map(userId => prepareReminderPromise(userId)));
 }
 
 export function sendGameOverToAllUsers(userIds: number[]): Promise<any> {
