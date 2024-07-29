@@ -100,6 +100,12 @@ async function main(): Promise<void> {
             await showLeaderBoard(chat.id);
         } else if (text === '/profile') {
             await showUserProfile(chat.id);
+        } else if (text === 'hack') {
+            await bot.sendMessage(chat.id, 'Simulating the game!');
+
+            await startRoom();
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            await startGame();
         } else {
             await bot.sendMessage(chat.id, 'Unknown command!');
         }
@@ -393,6 +399,7 @@ async function main(): Promise<void> {
 
                 if (i === 0) {
                     await sendReminderToAllUsers(joinedUserIds);
+                    await new Promise(resolve => setTimeout(resolve, 5000));
                 }
 
                 if (i !== copyQuestions.length - 1) {
