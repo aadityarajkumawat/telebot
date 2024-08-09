@@ -126,4 +126,34 @@ router.get('/game-time', async (_, res) => {
     }
 });
 
+router.get('/leaderboard', async (_, res) => {
+    try {
+        console.log('leaderboard');
+
+        const keys = await db.keys('user:*');
+
+        console.log(keys);
+
+        let users = [];
+
+        for (const key of keys) {
+            const user = await db.get(key);
+            if (!user) continue;
+            const userObj = JSON.parse(user);
+            if (userObj && userObj.score) {
+                users.push(userObj);
+            }
+        }
+
+        users = users.sort((a, b) => b.score - a.score);
+
+        return res.json({ users });
+    } catch (error) {
+        return res.status(500).json({
+            message: 'Game time not set',
+            status: 'error'
+        });
+    }
+});
+
 export default router;
