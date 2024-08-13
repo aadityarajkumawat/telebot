@@ -12,9 +12,7 @@ export async function getTodaysQuiz(dateString: string) {
 
     const questions = await prisma.question.findMany({
         where: {
-            scheduledAt: {
-                lte: date
-            }
+            scheduledAt: date
         }
     });
 
