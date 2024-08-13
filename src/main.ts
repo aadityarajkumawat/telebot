@@ -68,7 +68,11 @@ async function main(): Promise<void> {
         { command: '/disconnect', description: 'Disconnect your wallet' },
         { command: '/redeem', description: 'Redeem your points to connected wallet' },
         { command: '/leaderboard', description: 'Show the leaderboard' },
-        { command: '/profile', description: 'Show your profile' }
+        { command: '/profile', description: 'Show your profile' },
+        {
+            command: '/invite',
+            description: 'Get your referral link to invite more people to the game!'
+        }
     ]);
 
     bot.onText(/^\/start [0-9]/i, async msg => {

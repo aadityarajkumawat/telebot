@@ -144,8 +144,23 @@ export async function handleSendTXCommand(chatId: number, amount: number): Promi
         return;
     }
 
+    const wallet = connector.wallet;
+
+    if (!wallet) {
+        await bot.sendMessage(chatId, 'Wallet not found');
+        return;
+    }
+
+    const account = wallet.account;
+
+    if (!account) {
+        await bot.sendMessage(chatId, 'Account not found');
+        return;
+    }
+
+    await bot.sendMessage(chatId, `Sending ${amount} TON to your address`);
     pTimeout(
-        sendTon(connector.wallet?.account.address || '', amount.toString()),
+        sendTon(account.address, amount.toString()),
         Number(process.env.DELETE_SEND_TX_MESSAGE_TIMEOUT_MS)
     )
         .then(async () => {
