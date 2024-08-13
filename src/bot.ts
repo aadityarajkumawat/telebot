@@ -41,6 +41,15 @@ export function sendReminderToAllUsers(userIds: number[]): Promise<Array<Telegra
     return Promise.all(userIds.map(userId => prepareReminderPromise(userId)));
 }
 
+export function sendCorrectAnswerToAllUsers(
+    userIds: number[],
+    correctOption: string
+): Promise<any> {
+    return Promise.all(
+        userIds.map(userId => bot.sendMessage(userId, `Correct Option: ${correctOption}`))
+    );
+}
+
 export function sendGameOverToAllUsers(userIds: number[]): Promise<any> {
     return Promise.all(userIds.map(userId => bot.sendMessage(userId, 'Game Over!')));
 }

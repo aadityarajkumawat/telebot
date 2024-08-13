@@ -296,7 +296,9 @@ export async function showUserProfile(chatId: number) {
 
     await bot.sendMessage(
         chatId,
-        `Name: ${user.first_name} ${user.last_name}\nScore: ${user.score}\nConnected Wallet: ${
+        `Name: ${user.first_name} ${user.last_name}\nLives: ${user.live}\nPoints: ${
+            user.score
+        }\nConnected Wallet: ${
             walletConnected
                 ? `Yes (${connector.wallet?.device.appName})\nWallet: ${connector.wallet?.account.address}`
                 : 'No'

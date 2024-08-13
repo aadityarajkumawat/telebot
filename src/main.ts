@@ -7,7 +7,13 @@ import express from 'express';
 import moment from 'moment-timezone';
 import cron from 'node-cron';
 import api, { getTodaysQuiz } from './api';
-import { bot, sendGameOverToAllUsers, sendQuestionToAllUsers, sendReminderToAllUsers } from './bot';
+import {
+    bot,
+    sendCorrectAnswerToAllUsers,
+    sendGameOverToAllUsers,
+    sendQuestionToAllUsers,
+    sendReminderToAllUsers
+} from './bot';
 import {
     handleConnectCommand,
     handleDisconnectCommand,
@@ -65,7 +71,51 @@ async function main(): Promise<void> {
         { command: '/profile', description: 'Show your profile' }
     ]);
 
+    bot.onText(/^\/start [0-9]/i, async msg => {
+        const chat = msg.chat;
+        const from = msg.from;
+        const text = msg.text;
+        if (!from || !chat || !text) {
+            logger.error('No from or chat or text in message');
+            return;
+        }
+
+        const fromId = text.split(' ')[1];
+
+        const userDoc = await db.get(`user:${chat.id.toString()}`);
+        if (userDoc) {
+            await bot.sendMessage(chat.id, 'You have already signed up!');
+            return;
+        }
+        await db.set(`user:${chat.id.toString()}`, JSON.stringify({ ...from, score: 1, live: 1 }));
+        await bot.sendMessage(
+            chat.id,
+            `Thanks for signing up!\nThe game room starts at 7:00 PM UTC and beings at 7:10 PM UTC\nWe'll send you notifications reminding about the game\nThank you`
+        );
+
+        if (Number(fromId) !== chat.id) {
+            // give 10 points to the user
+            const fromUser = await db.get(`user:${fromId}`);
+            if (!fromUser) {
+                return;
+            }
+
+            const user = JSON.parse(fromUser);
+            user.score = (user.score || 0) + 10;
+            user.live = (user.live || 0) + 1;
+
+            await db.set(`user:${fromId}`, JSON.stringify(user));
+        } else {
+            await bot.sendMessage(
+                chat.id,
+                "You have signed up successfully! [Can't give points to yourself]"
+            );
+        }
+    });
+
     bot.on('message', async msg => {
+        // console.log(metadata, msg);
+
         const from = msg.from;
         const chat = msg.chat;
         const text = msg.text;
@@ -75,18 +125,11 @@ async function main(): Promise<void> {
             return;
         }
 
-        if (text === '/start') {
-            const userDoc = await db.get(`user:${chat.id.toString()}`);
-            if (userDoc) {
-                await bot.sendMessage(chat.id, 'You have already signed up!');
-                return;
-            }
-            await db.set(`user:${chat.id.toString()}`, JSON.stringify({ ...from, score: 1 }));
-            await bot.sendMessage(
-                chat.id,
-                `Thanks for signing up!\nThe game room starts at 7:00 PM UTC and beings at 7:10 PM UTC\nWe'll send you notifications reminding about the game\nThank you`
-            );
-        } else if (text === '/connect') {
+        if (text.includes('/start')) {
+            return;
+        }
+
+        if (text === '/connect') {
             await handleConnectCommand(msg);
         } else if (text === '/disconnect') {
             await handleDisconnectCommand(msg);
@@ -102,10 +145,11 @@ async function main(): Promise<void> {
             await showUserProfile(chat.id);
         } else if (text === 'hack') {
             await bot.sendMessage(chat.id, 'Simulating the game!');
-
             await startRoom();
             await new Promise(resolve => setTimeout(resolve, 10000));
             await startGame();
+        } else if (text === '/invite') {
+            await bot.sendMessage(chat.id, 'https://t.me/triviaquesbot?start=' + from.id);
         } else {
             await bot.sendMessage(chat.id, 'Unknown command!');
         }
@@ -175,8 +219,26 @@ async function main(): Promise<void> {
                 }
 
                 if (!gameStarted) {
-                    await db.set(`joining:${message.chat.id.toString()}`, 0);
-                    await bot.sendMessage(message.chat.id, `Game stars at ${'7:10'} UTC!`);
+                    const user = await db.get(`user:${message.chat.id.toString()}`);
+                    if (!user) {
+                        await bot.sendMessage(message.chat.id, 'You need to sign up first!');
+                        return;
+                    }
+
+                    const userO = JSON.parse(user);
+                    if (!userO.live) {
+                        await db.set(
+                            `user:${message.chat.id.toString()}`,
+                            JSON.stringify({ ...userO, live: 1 })
+                        );
+                        await db.set(`joining:${message.chat.id.toString()}`, 0);
+                        await bot.sendMessage(message.chat.id, `Game stars at ${'7:10'} UTC!`);
+                    } else if (userO.live === 0) {
+                        await bot.sendMessage(message.chat.id, 'Sorry, you are left with 0 lives!');
+                    } else {
+                        await db.set(`joining:${message.chat.id.toString()}`, 0);
+                        await bot.sendMessage(message.chat.id, `Game stars at ${'7:10'} UTC!`);
+                    }
                 } else {
                     await bot.sendMessage(message.chat.id, 'Sorry, the game has already started!');
                 }
@@ -343,6 +405,8 @@ async function main(): Promise<void> {
             for (let i = 0; i < copyQuestions.length; i++) {
                 // check previous responses
                 const prevQuestion = QUESTIONS[currentIndex.get() - 1];
+                let minDocument = { response: '', _count: { response: Infinity } };
+
                 if (!prevQuestion) {
                     console.log('SERVER ERROR [INDEX NOT FOUND]:', currentIndex.get() - 1);
                 } else {
@@ -362,7 +426,6 @@ async function main(): Promise<void> {
                     });
 
                     // find the response with min count
-                    let minDocument = { response: '', _count: { response: Infinity } };
                     for (let item of minorityOption) {
                         if (item._count.response < minDocument._count.response) {
                             minDocument = item;
@@ -403,6 +466,9 @@ async function main(): Promise<void> {
                 }
 
                 if (i !== copyQuestions.length - 1) {
+                    if (i > 0) {
+                        await sendCorrectAnswerToAllUsers(joinedUserIds, minDocument.response);
+                    }
                     // check answers to previous questions
                     await sendQuestionToAllUsers(joinedUserIds, QUESTIONS, currentIndex.get());
 
@@ -425,7 +491,8 @@ async function main(): Promise<void> {
                 const score = user.score;
 
                 if (score) {
-                    user.score = score + 1;
+                    // increase score by 100 for all survived users
+                    user.score = score + 100;
                 }
 
                 await db.set(`user:${userId}`, JSON.stringify(user));

@@ -1,5 +1,4 @@
-import { encodeTelegramUrlParameters, isTelegramUrl, WalletInfoRemote } from '@tonconnect/sdk';
-import { response } from 'express';
+import { encodeTelegramUrlParameters, isTelegramUrl } from '@tonconnect/sdk';
 import { InlineKeyboardButton } from 'node-telegram-bot-api';
 
 export const AT_WALLET_APP_NAME = 'telegram-wallet';
@@ -87,4 +86,34 @@ export function isStringIntLike(intString: string) {
     }
 
     return true;
+}
+
+function generateRandomId(
+    length = 12,
+    includeUppercase = false,
+    includeLowercase = true,
+    includeDigits = false
+) {
+    let charPool = '';
+
+    if (includeUppercase) {
+        charPool += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    }
+    if (includeLowercase) {
+        charPool += 'abcdefghijklmnopqrstuvwxyz';
+    }
+    if (includeDigits) {
+        charPool += '0123456789';
+    }
+
+    if (!charPool) {
+        throw new Error('At least one character type should be selected.');
+    }
+
+    let randomId = '';
+    for (let i = 0; i < length; i++) {
+        randomId += charPool.charAt(Math.floor(Math.random() * charPool.length));
+    }
+
+    return randomId;
 }

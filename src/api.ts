@@ -8,9 +8,13 @@ const router = Router();
 
 export async function getTodaysQuiz(dateString: string) {
     const date = new Date(dateString);
+    console.log(date.toString());
+
     const questions = await prisma.question.findMany({
         where: {
-            scheduledAt: date
+            scheduledAt: {
+                lte: date
+            }
         }
     });
 
