@@ -75,10 +75,12 @@ async function main(): Promise<void> {
         }
     ]);
 
-    bot.onText(/^\/start [0-9]/i, async msg => {
+    bot.onText(/^\/start\s?[0-9]?/i, async msg => {
         const chat = msg.chat;
         const from = msg.from;
         const text = msg.text;
+        console.log('START COMMAND:', msg);
+
         if (!from || !chat || !text) {
             logger.error('No from or chat or text in message');
             return;
